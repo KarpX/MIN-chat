@@ -9,6 +9,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Network)
+find_package(OpenSSL REQUIRED)
 
 add_subdirectory(common)
 add_subdirectory(client)
