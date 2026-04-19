@@ -8,5 +8,10 @@ add_library(CommonLib STATIC
     INetworkObserver.h
     IConnectionState.h
     ConnectionStates.h
+    DatabaseManager.h
 )
-target_include_directories(CommonLib PUBLIC .)
+
+target_link_libraries(CommonLib PUBLIC OpenSSL::Crypto)
+
+find_package(SQLite3 REQUIRED)
+target_link_libraries(CommonLib PUBLIC SQLite::SQLite3)

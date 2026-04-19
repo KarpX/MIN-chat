@@ -4,7 +4,7 @@
 
 struct MessageData {
     int sender;
-    int text;
+    QString text;
     QString timestamp;
 };
 
