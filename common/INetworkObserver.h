@@ -1,6 +1,7 @@
 #ifndef INETWORKOBSERVER_H
 #define INETWORKOBSERVER_H
 #include <QByteArray>
+#include <QString>
 
 class INetworkObserver {
 public:
@@ -8,4 +9,5 @@ public:
     virtual void onMessageReceived(const QByteArray &data) = 0;
     virtual void onStatusChanged(const QString &status) = 0;
 };
-#endif // INETWORKOBSERVER_H
+
+#endif

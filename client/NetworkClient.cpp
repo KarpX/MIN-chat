@@ -1,5 +1,5 @@
 #include "NetworkClient.h"
-#include "../common/ConnectionStates.h"
+#include "ConnectionStates.h"
 
 NetworkClient::NetworkClient(QObject *parent) : QObject(parent) {
     m_socket = new QTcpSocket(this);
@@ -41,8 +41,4 @@ void NetworkClient::rawSend(const QByteArray &data) {
 
 void NetworkClient::connectToServer(const QString &host, int port) {
     m_socket->connectToHost(host, port);
-}
-
-void OnlineState::send(NetworkClient* context, const QByteArray &data) {
-    context->rawSend(data);
 }

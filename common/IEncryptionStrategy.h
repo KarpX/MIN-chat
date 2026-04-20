@@ -1,7 +1,7 @@
 #ifndef IENCRYPTIONSTRATEGY_H
 #define IENCRYPTIONSTRATEGY_H
-
 #include <QByteArray>
+#include <QString>
 
 class IEncryptionStrategy {
 public:
@@ -11,4 +11,4 @@ public:
     virtual QString getAlgorithmName() const = 0;
 };
 
-#endif // IENCRYPTIONSTRATEGY_H
+#endif
