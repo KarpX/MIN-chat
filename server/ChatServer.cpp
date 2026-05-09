@@ -66,7 +66,6 @@ void ChatServer::incomingConnection(qintptr sd) {
                         if(onlineId != id) s->write("STATUS|" + QByteArray::number(onlineId) + "|В сети\n");
                     }
 
-                    // Обработка оффлайн сообщений
                     sqlite3_stmt* ost;
                     sqlite3_prepare_v2(m_db, "SELECT sid, sname, data, time FROM off_msgs WHERE rid=?;", -1, &ost, nullptr);
                     sqlite3_bind_int(ost, 1, id);
