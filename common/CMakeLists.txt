@@ -17,6 +17,9 @@ set(COMMON_SOURCES
     ContactModel.h
 )
 add_library(CommonLib STATIC ${COMMON_SOURCES}
-    IConnectionState.h)
+    IConnectionState.h
+    IMessage.h
+    MessageFactory.h
+    MessageFactory.cpp)
 target_link_libraries(CommonLib PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypto SQLite::SQLite3)
 target_include_directories(CommonLib PUBLIC .)

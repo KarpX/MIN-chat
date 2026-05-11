@@ -1,6 +1,7 @@
 #include "ChatController.h"
 #include <QCryptographicHash>
 #include "../common/AES256GCMStrategy.h"
+#include "../common/MessageFactory.h"
 
 ChatController::ChatController(QObject *p) : QObject(p) {
     m_crypto.setStrategy(std::make_unique<AES256GCMStrategy>());
@@ -72,65 +73,65 @@ void ChatController::sendMessage(QString text) {
 }
 
 void ChatController::onMessageReceived(const QByteArray &data) {
-    QByteArray cleanData = data.trimmed();
-    QList<QByteArray> p = cleanData.split('|');
-    if (p.isEmpty()) return;
+    auto msg = MessageFactory::create(data);
+    if (!msg) return;
 
-    if (p[0] == "AUTH_OK") {
-        if (p.size() < 3) return;
-        m_myId = p[1].toInt();
-        emit authSuccess(QString::fromUtf8(p[2]));
+    switch (msg->type()) {
+    case MessageType::Auth: {
+        auto* authMsg = static_cast<AuthMessage*>(msg.get());
+        if (authMsg->isSuccess) {
+            m_myId = authMsg->userId;
+            emit authSuccess(authMsg->userName);
+        } else {
+            emit authFailed();
+        }
+        break;
     }
-    else if (p[0] == "AUTH_ERR") { emit authFailed(); }
-    else if (p[0] == "SRCH_RES") {
-        if (p.size() < 3) return;
-        int fid = p[1].toInt();
-        if (fid != m_myId) {
+    case MessageType::SearchResult: {
+        auto* srchMsg = static_cast<SearchResultMessage*>(msg.get());
+        if (srchMsg->userId != m_myId) {
             QString lastText = "";
-            auto history = m_db.getMsgs(m_myId, fid);
+            auto history = m_db.getMsgs(m_myId, srchMsg->userId);
             if (!history.isEmpty()) {
                 auto last = history.last();
                 lastText = QString::fromUtf8(m_crypto.decryptData(last.encryptedData, KEY));
                 if (last.senderId == m_myId) lastText = "Вы: " + lastText;
             }
-            emit userFound(QString::fromUtf8(p[2]), fid, lastText);
+            emit userFound(srchMsg->userName, srchMsg->userId, lastText);
         }
+        break;
     }
-    else if (p[0] == "STATUS") {
-        if (p.size() < 3) return;
-        int sid = p[1].toInt();
-        QString status = QString::fromUtf8(p[2]).trimmed();
-        if (status != "Печатает...") m_userStatuses[sid] = status;
-        emit userStatusChanged(sid, status);
+    case MessageType::Status: {
+        auto* statMsg = static_cast<StatusMessage*>(msg.get());
+        if (statMsg->status != "Печатает...") m_userStatuses[statMsg->userId] = statMsg->status;
+        emit userStatusChanged(statMsg->userId, statMsg->status);
+        break;
     }
-    else if (p[0] == "TYPING") {
-        if (p.size() < 2) return;
-        emit userStatusChanged(p[1].toInt(), "Печатает...");
-    }
-    else if (p[0] == "MSG") {
-        if (p.size() < 5) return;
-        int sid = p[1].toInt();
-        QString sn  = QString::fromUtf8(p[2]);
-        QByteArray enc = QByteArray::fromBase64(p[3]);
-        QString t   = QString::fromUtf8(p[4]);
-        QString dec = QString::fromUtf8(m_crypto.decryptData(enc, KEY));
+    case MessageType::Text: {
+        auto* txtMsg = static_cast<TextMessage*>(msg.get());
+        QString dec = QString::fromUtf8(m_crypto.decryptData(txtMsg->encryptedData, KEY));
 
-        if (sid != m_myId) {
-            if (!m_db.isMessageExists(sid, m_myId, t, enc)) {
-                m_db.saveContact(sid, sn);
-                m_db.saveMsg(sid, m_myId, enc, t);
+        if (txtMsg->senderId != m_myId) {
+            if (!m_db.isMessageExists(txtMsg->senderId, m_myId, txtMsg->timestamp, txtMsg->encryptedData)) {
+                m_db.saveContact(txtMsg->senderId, txtMsg->senderName);
+                m_db.saveMsg(txtMsg->senderId, m_myId, txtMsg->encryptedData, txtMsg->timestamp);
             }
-            m_userStatuses[sid] = "В сети";
-            emit userStatusChanged(sid, "В сети");
-            if (sid == m_targetId) {
-                if (!m_sessionMsgs.contains(t + dec)) {
-                    m_sessionMsgs.insert(t + dec);
-                    emit newMessageReceived(dec, false, t);
+            m_userStatuses[txtMsg->senderId] = "В сети";
+            emit userStatusChanged(txtMsg->senderId, "В сети");
+
+            if (txtMsg->senderId == m_targetId) {
+                if (!m_sessionMsgs.contains(txtMsg->timestamp + dec)) {
+                    m_sessionMsgs.insert(txtMsg->timestamp + dec);
+                    emit newMessageReceived(dec, false, txtMsg->timestamp);
                 }
             } else {
-                emit userFound(sn, sid, dec);
+                emit userFound(txtMsg->senderName, txtMsg->senderId, dec);
             }
         }
+        break;
+    }
+    default:
+        break;
     }
 }
 
