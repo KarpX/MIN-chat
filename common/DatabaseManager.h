@@ -14,7 +14,8 @@ public:
     bool isMessageExists(int sid, int rid, const QString& time, const QByteArray& data);
     void saveContact(int id, const QString& name);
     QVector<ContactRecord> getContacts(int myId);
-    void saveMsg(int sid, int rid, const QByteArray& d, const QString& t);
+    void saveMsg(int senderId, int receiverId, const QByteArray& encryptedData,
+    const QString& timestamp, bool isFile, const QString& fileName, int fileSize);
     QVector<MessageRecord> getMsgs(int myId, int targetId);
     QVector<ContactRecord> getContactsWithLastMsg(int myId);
 private:

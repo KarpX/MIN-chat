@@ -30,6 +30,19 @@ std::unique_ptr<IMessage> MessageFactory::create(const QByteArray& rawData) {
             QString::fromUtf8(p[4])
             );
     }
+    if (cmd == "FILE" && p.size() >= 7) {
+        QByteArray encData = QByteArray::fromBase64(p[5]);
+
+        auto proxy = std::make_unique<FileMessageProxy>("", QString::fromUtf8(p[3]), p[4].toInt());
+
+        return std::make_unique<FileMessage>(
+            p[1].toInt(),
+            QString::fromUtf8(p[2]),
+            QString::fromUtf8(p[6]),
+            encData,
+            std::move(proxy)
+        );
+    }
 
     return nullptr;
 }

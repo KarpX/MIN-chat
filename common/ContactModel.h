@@ -6,7 +6,10 @@ struct ContactRecord {
     int id;
     QString username;
     QByteArray lastEncryptedData;
-    bool lastWasMe;
+    bool lastWasMe  = false;
+
+    bool lastIsFile   = false;
+    QString lastFileName;
 };
 
 #endif // CONTACTMODEL_H

@@ -4,11 +4,14 @@
 #include <QString>
 #include <QByteArray>
 
+#include "FileMessageProxy.h"
+
 enum class MessageType {
     Auth,
     SearchResult,
     Status,
     Text,
+    File,
     Unknown
 };
 
@@ -62,4 +65,20 @@ struct TextMessage : public IMessage {
     MessageType type() const override { return MessageType::Text; }
 };
 
+struct FileMessage : public IMessage {
+    int senderId;
+    QString senderName;
+    QString timestamp;
+    QByteArray encryptedData;
+    std::unique_ptr<IFileContent> fileContent;
+
+    FileMessage(int id, QString name, QString time, QByteArray encData, std::unique_ptr<IFileContent> content)
+        : senderId(id),
+        senderName(name),
+        timestamp(time),
+        encryptedData(encData),
+        fileContent(std::move(content)) {}
+
+    MessageType type() const override { return MessageType::File; }
+};
 #endif // IMESSAGE_H

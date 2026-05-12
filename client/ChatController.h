@@ -20,21 +20,27 @@ public:
     Q_INVOKABLE void selectChat(int id, QString name);
     Q_INVOKABLE void sendMessage(QString text);
     Q_INVOKABLE void sendTypingStatus();
+    Q_INVOKABLE void sendFile(const QString &fileUrl);
+    Q_INVOKABLE void downloadFile(int peerId, QString timestamp, QString fileName);
     void onMessageReceived(const QByteArray &data) override;
     void onStatusChanged(const QString &status) override;
 
 signals:
-    void newMessageReceived(QString t, bool m, QString tm);
     void networkStatusChanged(QString s);
     void authSuccess(QString n);
     void authFailed();
     void userFound(QString n, int id, QString lastMsg);
     void userStatusChanged(int id, QString status);
+    void newMessageReceived(const QString& text, bool isMe, const QString& timestamp, bool isFile = false,
+    const QString& fileName = QString(), int fileSize = 0);
+    void fileDownloaded(const QString& savePath);
+    void fileDownloadError(const QString& fileName);
 
 private:
     void loadHistory();
 
     int m_myId = -1;
+    QString m_myName;
     int m_targetId = -1;
     QSet<QString>    m_sessionMsgs;
     QMap<int, QString> m_userStatuses;

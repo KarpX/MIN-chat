@@ -20,6 +20,8 @@ add_library(CommonLib STATIC ${COMMON_SOURCES}
     IConnectionState.h
     IMessage.h
     MessageFactory.h
-    MessageFactory.cpp)
+    MessageFactory.cpp
+    FileMessageProxy.h
+    ICommand.h)
 target_link_libraries(CommonLib PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypto SQLite::SQLite3)
 target_include_directories(CommonLib PUBLIC .)

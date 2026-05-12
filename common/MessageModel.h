@@ -14,6 +14,10 @@ struct MessageRecord {
     int receiverId;
     QByteArray encryptedData;
     QString timestamp;
+
+    bool isFile   = false;
+    QString fileName;
+    int fileSize = 0;
 };
 
 #endif // MESSAGEMODEL_H

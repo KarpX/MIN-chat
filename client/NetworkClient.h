@@ -5,8 +5,10 @@
 #include <QObject>
 #include <memory>
 #include <vector>
+#include <queue>
 #include "../common/INetworkObserver.h"
 #include "../common/IConnectionState.h"
+#include "../common/ICommand.h"
 
 class NetworkClient : public QObject {
     Q_OBJECT
@@ -21,6 +23,10 @@ public:
     void rawSend(const QByteArray &data);
     void connectToServer(const QString &host, int port);
 
+    void postCommand(std::unique_ptr<ICommand> cmd);
+
+    void processPendingCommands();
+
 private slots:
     void onReadyRead();
 
@@ -32,6 +38,7 @@ private:
     QTcpSocket* m_socket;
     std::unique_ptr<IConnectionState> m_state;
     std::vector<INetworkObserver*> m_observers;
+    std::queue<std::unique_ptr<ICommand>> m_pendingCommands;
 
     friend class OnlineState;
     friend class HandshakeState;

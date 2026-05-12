@@ -20,6 +20,8 @@ qt_add_qml_module(ChatClient
     RESOURCE_PREFIX "/"
     QML_FILES main.qml
     SOURCES
+    SOURCES SendMessageCommand.h
+    SOURCES SendMessageCommand.cpp
 )
 
 target_link_libraries(ChatClient PRIVATE Qt6::Quick Qt6::Network Qt6::Core Qt6::QuickControls2 CommonLib)

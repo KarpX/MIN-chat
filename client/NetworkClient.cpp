@@ -24,6 +24,7 @@ void NetworkClient::onReadyRead() {
 
         if (line == "SYS_HANDSHAKE_OK") {
             this->setState(std::make_unique<OnlineState>());
+            this->processPendingCommands();
         } else {
             for(auto* obs : m_observers) {
                 obs->onMessageReceived(line);
@@ -41,4 +42,21 @@ void NetworkClient::rawSend(const QByteArray &data) {
 
 void NetworkClient::connectToServer(const QString &host, int port) {
     m_socket->connectToHost(host, port);
+}
+
+void NetworkClient::postCommand(std::unique_ptr<ICommand> cmd) {
+    if (m_state->stateName() == "Online") {
+        cmd->execute();
+    } else {
+        qDebug() << "Network: Connection busy. Command queued.";
+        m_pendingCommands.push(std::move(cmd));
+    }
+}
+
+void NetworkClient::processPendingCommands() {
+    qDebug() << "Network: Processing pending commands..." << m_pendingCommands.size();
+    while (!m_pendingCommands.empty()) {
+        m_pendingCommands.front()->execute();
+        m_pendingCommands.pop();
+    }
 }

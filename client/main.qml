@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Controls.Material 2.15
+import QtQuick.Dialogs
 
 ApplicationWindow {
     id: window
@@ -27,6 +28,43 @@ ApplicationWindow {
         if (s === "В сети")      return "#4CAF50"
         if (s === "Печатает...") return "#FFC107"
         return "#555"
+    }
+
+    // ─── Toast-уведомление ──────────────────────────────────────────────────
+    Rectangle {
+        id: toast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 32
+        width: toastText.implicitWidth + 40
+        height: 44
+        radius: 22
+        color: toastSuccess ? "#1b5e20" : "#b71c1c"
+        opacity: 0
+        z: 999
+
+        property bool toastSuccess: true
+
+        Text {
+            id: toastText
+            anchors.centerIn: parent
+            color: "white"
+            font.pixelSize: 14
+        }
+
+        SequentialAnimation {
+            id: toastAnim
+            NumberAnimation { target: toast; property: "opacity"; to: 1;    duration: 200 }
+            PauseAnimation  { duration: 2400 }
+            NumberAnimation { target: toast; property: "opacity"; to: 0;    duration: 300 }
+        }
+
+        function show(text, success) {
+            toastText.text  = text
+            toast.toastSuccess = success !== false
+            opacity = 0
+            toastAnim.restart()
+        }
     }
 
     // ─── FloatField ─────────────────────────────────────────────────────────
@@ -128,8 +166,19 @@ ApplicationWindow {
                 onTriggered: { if (targetId !== -1) chatPage_root.internalUpdateStatus(targetId, "В сети") } }
             Timer { id: typingCooldownTimer; interval: 2000; repeat: false; onTriggered: chatPage_root.typingCooldown = false }
 
+            FileDialog {
+                id: fileDialog
+                title: "Выберите файл для отправки"
+                onAccepted: {
+                    // selectedFile — это url, ChatController.sendFile принимает QString и сам делает QUrl::toLocalFile
+                    chatController.sendFile(fileDialog.selectedFile.toString())
+                }
+            }
+
             RowLayout {
                 anchors.fill: parent; spacing: 0
+
+                // ── Боковая иконка-панель ────────────────────────────────────
                 Rectangle {
                     Layout.preferredWidth: 64; Layout.fillHeight: true; color: "#141414"
                     ColumnLayout {
@@ -144,7 +193,10 @@ ApplicationWindow {
                         }
                     }
                 }
+
                 Rectangle { width: 1; Layout.fillHeight: true; color: "#222" }
+
+                // ── Список контактов ─────────────────────────────────────────
                 Rectangle {
                     Layout.preferredWidth: 300; Layout.fillHeight: true; color: "#181818"
                     ColumnLayout {
@@ -164,12 +216,17 @@ ApplicationWindow {
                             delegate: ItemDelegate {
                                 id: contactDelegate; width: parent.width; height: 72
                                 highlighted: chatPage_root.currentChatId === model.userId
-                                background: Rectangle { color: contactDelegate.highlighted ? "#1a2a3a" : (contactDelegate.hovered ? "#202020" : "transparent")
-                                    Rectangle { anchors.left: parent.left; width: 3; height: parent.height; color: "#1565C0"; visible: contactDelegate.highlighted; radius: 2 } }
+                                background: Rectangle {
+                                    color: contactDelegate.highlighted ? "#1a2a3a" : (contactDelegate.hovered ? "#202020" : "transparent")
+                                    Rectangle { anchors.left: parent.left; width: 3; height: parent.height; color: "#1565C0"; visible: contactDelegate.highlighted; radius: 2 }
+                                }
                                 onClicked: {
-                                    curName.text = model.name; chatPage_root.currentChatId = model.userId
+                                    curName.text = model.name
+                                    chatPage_root.currentChatId = model.userId
                                     chatPage_root.activeChatStatus = model.status || "Не в сети"
-                                    messageModel.clear(); chatController.selectChat(model.userId, model.name); window.contentItem.forceActiveFocus()
+                                    messageModel.clear()
+                                    chatController.selectChat(model.userId, model.name)
+                                    window.contentItem.forceActiveFocus()
                                 }
                                 RowLayout {
                                     anchors.fill: parent; anchors.margins: 12; spacing: 12
@@ -177,22 +234,34 @@ ApplicationWindow {
                                         Rectangle { anchors.fill: parent; radius: 23; color: Qt.hsla((model.userId * 37) % 360 / 360, 0.5, 0.35, 1)
                                             Text { anchors.centerIn: parent; text: model.name.charAt(0).toUpperCase(); font.pixelSize: 18; font.bold: true; color: "white" } }
                                         Rectangle { width: 13; height: 13; radius: 6.5; color: window.statusColor(model.status); border.color: "#181818"; border.width: 2; anchors.right: parent.right; anchors.bottom: parent.bottom
-                                            Behavior on color { ColorAnimation { duration: 250 } } } }
+                                            Behavior on color { ColorAnimation { duration: 250 } } }
+                                    }
                                     ColumnLayout { Layout.fillWidth: true; spacing: 2
                                         Label { text: model.name; font.pixelSize: 14; font.bold: true; color: "white"; elide: Text.ElideRight; Layout.fillWidth: true }
-                                        Label { text: model.status === "Печатает..." ? "Печатает..." : (model.lastMsg || "Нет сообщений")
-                                            font.pixelSize: 12; color: model.status === "Печатает..." ? "#FFC107" : "#555"; elide: Text.ElideRight; Layout.fillWidth: true } }
+                                        Label {
+                                            text: model.status === "Печатает..." ? "Печатает..." : (model.lastMsg || "Нет сообщений")
+                                            font.pixelSize: 12
+                                            color: model.status === "Печатает..." ? "#FFC107" : "#555"
+                                            elide: Text.ElideRight; Layout.fillWidth: true
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
                 Rectangle { width: 1; Layout.fillHeight: true; color: "#222" }
+
+                // ── Область чата ─────────────────────────────────────────────
                 Rectangle {
                     id: chatArea; Layout.fillWidth: true; Layout.fillHeight: true; color: "#0f0f0f"
                     property bool isSel: chatPage_root.currentChatId !== -1
+
                     ColumnLayout {
                         anchors.fill: parent; spacing: 0
+
+                        // Шапка чата
                         Rectangle { Layout.fillWidth: true; height: 64; color: "#181818"
                             RowLayout { anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 20; spacing: 14
                                 Item { width: 40; height: 40; visible: chatArea.isSel
@@ -202,75 +271,289 @@ ApplicationWindow {
                                     Label { id: curName; text: "Выберите чат"; font.pixelSize: 16; font.bold: true; color: "white" }
                                     RowLayout { spacing: 6; visible: chatArea.isSel
                                         Rectangle { width: 7; height: 7; radius: 3.5; color: window.statusColor(chatPage_root.activeChatStatus); Behavior on color { ColorAnimation { duration: 250 } } }
-                                        Label { text: chatPage_root.activeChatStatus; font.pixelSize: 12; color: window.statusColor(chatPage_root.activeChatStatus); Behavior on color { ColorAnimation { duration: 250 } } } } }
-                                Item { Layout.fillWidth: true } }
-                            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222" } }
+                                        Label { text: chatPage_root.activeChatStatus; font.pixelSize: 12; color: window.statusColor(chatPage_root.activeChatStatus); Behavior on color { ColorAnimation { duration: 250 } } }
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222" }
+                        }
+
+                        // Список сообщений
                         ListView {
-                            id: msgList; Layout.fillWidth: true; Layout.fillHeight: true; topMargin: 20; bottomMargin: 20; leftMargin: 20; rightMargin: 20; spacing: 16; clip: true
-                            visible: chatArea.isSel; model: ListModel { id: messageModel }
+                            id: msgList
+                            Layout.fillWidth: true; Layout.fillHeight: true
+                            topMargin: 20; bottomMargin: 20; leftMargin: 20; rightMargin: 20
+                            spacing: 16; clip: true
+                            visible: chatArea.isSel
+                            model: ListModel { id: messageModel }
+
                             delegate: Item {
-                                id: delegateRoot; width: msgList.width - msgList.leftMargin - msgList.rightMargin; height: bubble.height
-                                Text { id: sizer; visible: false; text: model.msg; font.pixelSize: 15; wrapMode: Text.NoWrap }
+                                id: delegateRoot
+                                width: msgList.width - msgList.leftMargin - msgList.rightMargin
+                                height: bubble.height + 2   // небольшой зазор снизу
+
+                                // Скрытый Text для измерения ширины только для не-файловых сообщений
+                                Text {
+                                    id: sizer
+                                    visible: false
+                                    text: model.isFile ? "" : (model.msg || "")
+                                    font.pixelSize: 15
+                                    wrapMode: Text.NoWrap
+                                }
+
                                 readonly property real maxBubble: delegateRoot.width * 0.72
-                                readonly property real bubbleW:   Math.min(sizer.implicitWidth + 28, maxBubble)
+                                // Файлы — фиксированная ширина 300px; текст — по содержимому
+                                readonly property real bubbleW: model.isFile
+                                                                ? 300
+                                                                : Math.min(sizer.implicitWidth + 32, maxBubble)
+
                                 Rectangle {
-                                    id: bubble; width: delegateRoot.bubbleW; height: msgContent.implicitHeight + timeRow.height + 22; radius: 14; color: model.isMe ? "#1565C0" : "#242424"
-                                    anchors.right: model.isMe ? parent.right : undefined; anchors.left:  model.isMe ? undefined : parent.left
-                                    Rectangle { width: 12; height: 12; color: parent.color; radius: 2; anchors.bottom: parent.bottom; anchors.right: model.isMe ? parent.right : undefined; anchors.left:  model.isMe ? undefined : parent.left }
-                                    Text { id: msgContent; text: model.msg; color: "white"; font.pixelSize: 15; wrapMode: Text.WordWrap; width: bubble.width - 24; lineHeight: 1.35; anchors.top: parent.top; anchors.left: parent.left; anchors.topMargin: 10; anchors.leftMargin: 12 }
-                                    Item { id: timeRow; anchors.top: msgContent.bottom; anchors.left: parent.left; anchors.right: parent.right; anchors.topMargin: 2; height: timeText.implicitHeight + 8
-                                        Text { id: timeText; text: model.time; color: model.isMe ? "#90CAF9" : "#555"; font.pixelSize: 11; anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter } } } }
+                                    id: bubble
+                                    width: delegateRoot.bubbleW
+                                    height: contentLayout.implicitHeight + 20
+                                    radius: 14
+                                    color: model.isMe ? "#1565C0" : "#242424"
+                                    anchors.right: model.isMe ? parent.right : undefined
+                                    anchors.left:  model.isMe ? undefined    : parent.left
+
+                                    // «хвостик» пузыря
+                                    Rectangle {
+                                        width: 12; height: 12; color: parent.color; radius: 2
+                                        anchors.bottom: parent.bottom
+                                        anchors.right: model.isMe ? parent.right : undefined
+                                        anchors.left:  model.isMe ? undefined    : parent.left
+                                    }
+
+                                    ColumnLayout {
+                                        id: contentLayout
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.margins: 10
+                                        spacing: 4
+
+                                        // ── Текстовое сообщение ──────────────────────────────
+                                        Text {
+                                            visible: !model.isFile
+                                            text: model.msg || ""
+                                            color: "white"
+                                            font.pixelSize: 15
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+
+                                        // ── Файловое сообщение ───────────────────────────────
+                                        RowLayout {
+                                            visible: model.isFile === true
+                                            spacing: 10
+                                            Layout.fillWidth: true
+
+                                            // Иконка файла
+                                            Text { text: "📄"; font.pixelSize: 30; Layout.alignment: Qt.AlignVCenter }
+
+                                            // Имя + размер
+                                            ColumnLayout {
+                                                spacing: 2
+                                                Layout.fillWidth: true
+                                                Text {
+                                                    text: model.fileName || ""
+                                                    color: "white"; font.bold: true; font.pixelSize: 14
+                                                    elide: Text.ElideMiddle
+                                                    Layout.fillWidth: true
+                                                }
+                                                Text {
+                                                    visible: model.fileSize > 0
+                                                    text: {
+                                                        var s = model.fileSize || 0
+                                                        if (s < 1024)        return s + " Б"
+                                                        if (s < 1024*1024)   return (s / 1024).toFixed(1) + " КБ"
+                                                        return (s / (1024*1024)).toFixed(2) + " МБ"
+                                                    }
+                                                    color: "#aaa"; font.pixelSize: 12
+                                                }
+                                            }
+
+                                            // Кнопка скачать — показываем для ВСЕХ файловых сообщений
+                                            Button {
+                                                visible: model.isFile === true
+
+                                                // Указываем размеры строго для Layout
+                                                Layout.preferredWidth: 40
+                                                Layout.preferredHeight: 40
+                                                Layout.alignment: Qt.AlignVCenter
+
+                                                // 1. Рисуем свой фон (отключаем Material Background)
+                                                background: Rectangle {
+                                                    color: model.isMe ? "#1565C0" : "#388E3C"
+                                                    radius: 8 // Немного скруглим углы
+                                                }
+
+                                                // 2. Рисуем свой текст (отключаем обрезку Material-стиля)
+                                                contentItem: Text {
+                                                    text: "⬇️"
+                                                    font.pixelSize: 20
+                                                    color: "white"
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
+
+                                                onClicked: {
+                                                    chatController.downloadFile(
+                                                        chatPage_root.currentChatId,
+                                                        model.time,
+                                                        model.fileName
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Item {
+                                            Layout.fillWidth: true
+                                            height: timeText.implicitHeight
+                                            Text {
+                                                id: timeText
+                                                text: model.time.substring(0, 5) || ""
+                                                color: model.isMe ? "#90CAF9" : "#555"
+                                                font.pixelSize: 11
+                                                anchors.right: parent.right
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             onCountChanged: Qt.callLater(function() { positionViewAtEnd() })
                         }
-                        Item { Layout.fillWidth: true; Layout.fillHeight: true; visible: !chatArea.isSel
+
+                        // Заглушка «Выберите чат»
+                        Item {
+                            Layout.fillWidth: true; Layout.fillHeight: true
+                            visible: !chatArea.isSel
                             ColumnLayout { anchors.centerIn: parent; spacing: 12
                                 Text { text: "💬"; font.pixelSize: 48; Layout.alignment: Qt.AlignHCenter }
-                                Label { text: "Выберите чат"; color: "#444"; font.pixelSize: 16; Layout.alignment: Qt.AlignHCenter } } }
+                                Label { text: "Выберите чат"; color: "#444"; font.pixelSize: 16; Layout.alignment: Qt.AlignHCenter }
+                            }
+                        }
+
+                        // Панель ввода
                         Rectangle {
-                            Layout.fillWidth: true; height: 72; color: "#141414"; visible: chatArea.isSel
+                            Layout.fillWidth: true; height: 72; color: "#141414"
+                            visible: chatArea.isSel
                             Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222" }
                             RowLayout { anchors.fill: parent; anchors.margins: 12; spacing: 10
+                                Button {
+                                    text: "📎"
+                                    width: 46; height: 46; font.pixelSize: 22
+                                    Material.background: "transparent"
+                                    Material.foreground: "#777"
+                                    onClicked: fileDialog.open()
+                                }
                                 TextField {
-                                    id: msgIn; Layout.fillWidth: true; placeholderText: "Написать сообщение..."; font.pixelSize: 14
+                                    id: msgIn
+                                    Layout.fillWidth: true
+                                    placeholderText: "Написать сообщение..."
+                                    font.pixelSize: 14
                                     background: Rectangle { color: "#1e1e1e"; border.color: msgIn.activeFocus ? "#1565C0" : "#2e2e2e"; border.width: 1; radius: 22 }
                                     leftPadding: 18; rightPadding: 18
-                                    onTextChanged: { if (text.length > 0 && !chatPage_root.typingCooldown) { chatController.sendTypingStatus(); chatPage_root.typingCooldown = true; typingCooldownTimer.restart() } }
-                                    onAccepted: { if (text !== "") { chatController.sendMessage(text); text = "" } }
+                                    onTextChanged: {
+                                        if (text.length > 0 && !chatPage_root.typingCooldown) {
+                                            chatController.sendTypingStatus()
+                                            chatPage_root.typingCooldown = true
+                                            typingCooldownTimer.restart()
+                                        }
+                                    }
+                                    onAccepted: {
+                                        if (text.trim() !== "") {
+                                            chatController.sendMessage(text)
+                                            text = ""
+                                        }
+                                    }
                                 }
-                                Button { text: "➤"; width: 46; height: 46; font.pixelSize: 18; Material.background: "#1565C0"; Material.foreground: "white"
-                                    onClicked: { if (msgIn.text !== "") { chatController.sendMessage(msgIn.text); msgIn.text = ""; window.contentItem.forceActiveFocus() } } }
+                                Button {
+                                    text: "➤"; width: 46; height: 46; font.pixelSize: 18
+                                    Material.background: "#1565C0"; Material.foreground: "white"
+                                    onClicked: {
+                                        if (msgIn.text.trim() !== "") {
+                                            chatController.sendMessage(msgIn.text)
+                                            msgIn.text = ""
+                                            window.contentItem.forceActiveFocus()
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
+            // ── Connections ──────────────────────────────────────────────────
             Connections {
                 target: chatController
+
                 function onUserFound(n, id, last) {
                     for (var i = 0; i < contactsModel.count; i++) {
                         if (contactsModel.get(i).userId === id) {
-                            // ИСПРАВЛЕНИЕ: Если контакт найден через поиск, обновляем его данные, если они пришли
-                            if (last !== "") contactsModel.setProperty(i, "lastMsg", last);
-                            if (n !== "") contactsModel.setProperty(i, "name", n);
-                            return;
+                            if (last !== "") contactsModel.setProperty(i, "lastMsg", last)
+                            if (n    !== "") contactsModel.setProperty(i, "name",    n)
+                            return
                         }
                     }
-                    contactsModel.append({ "name": n, "userId": id, "lastMsg": last, "status": window.userStatuses[id] || "Не в сети" })
+                    contactsModel.append({
+                        "name":    n,
+                        "userId":  id,
+                        "lastMsg": last,
+                        "status":  window.userStatuses[id] || "Не в сети"
+                    })
                 }
-                function onNewMessageReceived(t, m, tm) {
-                    var dup = false; for (var j = 0; j < messageModel.count; j++) { if (messageModel.get(j).msg === t && messageModel.get(j).time === tm) { dup = true; break } }
-                    if (!dup) messageModel.append({ "msg": t, "isMe": m, "time": tm })
+
+                function onNewMessageReceived(t, isMe, tm, isFile, fName, fSize) {
+                    if (!isMe) {
+                        var key = isFile ? (tm + "|" + fName) : (tm + "|" + t)
+                        for (var j = 0; j < messageModel.count; j++) {
+                            var item = messageModel.get(j)
+                            var itemKey = item.isFile ? (item.time + "|" + item.fileName) : (item.time + "|" + item.msg)
+                            if (itemKey === key && item.isMe === isMe) return
+                        }
+                    }
+
+                    messageModel.append({
+                        "msg":      t      || "",
+                        "isMe":     isMe   || false,
+                        "time":     tm     || "",
+                        "isFile":   isFile || false,
+                        "fileName": fName  || "",
+                        "fileSize": fSize  || 0
+                    })
+
+                    // Обновляем превью последнего сообщения в списке контактов
                     for (var k = 0; k < contactsModel.count; k++) {
                         if (contactsModel.get(k).userId === chatPage_root.currentChatId) {
-                            contactsModel.setProperty(k, "lastMsg", (m ? "Вы: " : "") + t); contactsModel.move(k, 0, 1); break
+                            var preview = (isMe ? "Вы: " : "") + (isFile ? "📎 " + fName : t)
+                            contactsModel.setProperty(k, "lastMsg", preview)
+                            contactsModel.move(k, 0, 1)
+                            break
                         }
                     }
                 }
+
                 function onNetworkStatusChanged(s) { connStat.text = s }
+
                 function onUserStatusChanged(id, status) { chatPage_root.internalUpdateStatus(id, status) }
+
+                // Сигнал успешного скачивания файла
+                function onFileDownloaded(path) {
+                    var fname = path.replace(/.*[\/\\]/, "")   // только имя файла
+                    toast.show("✓ Сохранено: " + fname + "\nПуть: " + path, true)
+                }
+
+                // Сигнал ошибки скачивания
+                function onFileDownloadError(fileName) {
+                    toast.show("✗ Не удалось скачать: " + fileName, false)
+                }
             }
         }
     }
+
     Connections { target: chatController; function onAuthSuccess(n) { stackView.push(chatPage) } }
 }
