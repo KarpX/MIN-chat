@@ -43,6 +43,13 @@ std::unique_ptr<IMessage> MessageFactory::create(const QByteArray& rawData) {
             std::move(proxy)
         );
     }
+    if ((cmd == "DH_REQ" || cmd == "DH_ACK") && p.size() >= 3) {
+        return std::make_unique<KeyExchangeMessage>(
+            p[1].toInt(),
+            (cmd == "DH_ACK"), // true, если это ACK
+            QByteArray::fromBase64(p[2])
+            );
+    }
 
     return nullptr;
 }

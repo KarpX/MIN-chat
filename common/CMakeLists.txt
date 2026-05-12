@@ -22,6 +22,8 @@ add_library(CommonLib STATIC ${COMMON_SOURCES}
     MessageFactory.h
     MessageFactory.cpp
     FileMessageProxy.h
-    ICommand.h)
+    ICommand.h
+    DHManager.h
+    DHManager.cpp)
 target_link_libraries(CommonLib PUBLIC Qt6::Core Qt6::Network OpenSSL::Crypto SQLite::SQLite3)
 target_include_directories(CommonLib PUBLIC .)

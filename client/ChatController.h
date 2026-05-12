@@ -7,6 +7,7 @@
 #include "../common/INetworkObserver.h"
 #include "../common/CryptoManager.h"
 #include "../common/DatabaseManager.h"
+#include "../common/DHManager.h"
 #include "NetworkClient.h"
 
 class ChatController : public QObject, public INetworkObserver {
@@ -22,6 +23,7 @@ public:
     Q_INVOKABLE void sendTypingStatus();
     Q_INVOKABLE void sendFile(const QString &fileUrl);
     Q_INVOKABLE void downloadFile(int peerId, QString timestamp, QString fileName);
+    Q_INVOKABLE QString getSecurityFingerprint(int peerId);
     void onMessageReceived(const QByteArray &data) override;
     void onStatusChanged(const QString &status) override;
 
@@ -48,7 +50,8 @@ private:
     CryptoManager  m_crypto;
     NetworkClient  m_network;
     DatabaseManager m_db;
-    const QByteArray KEY = "12345678901234567890123456789012";
+    QMap<int, QByteArray> m_sessionKeys;
+    QMap<int, std::shared_ptr<DHManager>> m_dhSessions;
 };
 
 #endif

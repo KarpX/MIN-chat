@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QCryptographicHash>
 
 ChatController::ChatController(QObject *p) : QObject(p) {
     m_crypto.setStrategy(std::make_unique<AES256GCMStrategy>());
@@ -34,11 +35,10 @@ void ChatController::loadSavedContacts() {
     for (auto& c : contacts) {
         QString text = "";
         if (!c.lastEncryptedData.isEmpty()) {
-            // Последнее сообщение могло быть файлом — не расшифровываем бинарные данные
             if (c.lastIsFile) {
                 text = "📎 " + c.lastFileName;
             } else {
-                text = QString::fromUtf8(m_crypto.decryptData(c.lastEncryptedData, KEY));
+                text = QString::fromUtf8(m_crypto.decryptData(c.lastEncryptedData, m_sessionKeys.value(c.id, "12345678901234567890123456789012")));
             }
             if (c.lastWasMe) text = "Вы: " + text;
         }
@@ -50,14 +50,22 @@ void ChatController::selectChat(int id, QString name) {
     m_targetId = id;
     m_db.saveContact(id, name);
     m_sessionMsgs.clear();
-    loadHistory();
+
+    // --- ДИФФИ-ХЕЛЛМАН: Проверяем, есть ли уже ключ ---
+    if (!m_sessionKeys.contains(id)) {
+        // Создаем свою половину
+        m_dhSessions[id] = std::make_shared<DHManager>();
+        QByteArray myPubKey = m_dhSessions[id]->getPublicKey();
+
+        // Отправляем собеседнику запрос с нашим публичным ключом
+        auto packet = "DH_REQ|" + QByteArray::number(id) + "|" + myPubKey.toBase64() + "\n";
+        m_network.postCommand(std::make_unique<SendMessageCommand>(&m_network, packet));
+    } else {
+        loadHistory(); // Грузим историю только если ключ уже есть
+    }
+
     QString cachedStatus = m_userStatuses.value(id, "Не в сети");
     emit userStatusChanged(id, cachedStatus);
-}
-
-void ChatController::sendTypingStatus() {
-    if (m_targetId != -1)
-        m_network.rawSend("TYPING|" + QByteArray::number(m_targetId) + "\n");
 }
 
 void ChatController::loadHistory() {
@@ -67,15 +75,14 @@ void ChatController::loadHistory() {
         bool isMe = (r.senderId == m_myId);
 
         if (r.isFile) {
-            // Файл: не расшифровываем содержимое как текст — только показываем метаданные
             QString dedupeKey = r.timestamp + "|file|" + r.fileName;
             if (!m_sessionMsgs.contains(dedupeKey)) {
                 m_sessionMsgs.insert(dedupeKey);
-                emit newMessageReceived("Файл: " + r.fileName, isMe, r.timestamp,
-                                        true, r.fileName, r.fileSize);
+                emit newMessageReceived("Файл: " + r.fileName, isMe, r.timestamp, true, r.fileName, r.fileSize);
             }
         } else {
-            QString t = QString::fromUtf8(m_crypto.decryptData(r.encryptedData, KEY));
+            // ИСПОЛЬЗУЕМ m_targetId КАК КЛЮЧ
+            QString t = QString::fromUtf8(m_crypto.decryptData(r.encryptedData, m_sessionKeys.value(m_targetId, "12345678901234567890123456789012")));
             QString dedupeKey = r.timestamp + "|text|" + t;
             if (!m_sessionMsgs.contains(dedupeKey)) {
                 m_sessionMsgs.insert(dedupeKey);
@@ -88,11 +95,14 @@ void ChatController::loadHistory() {
 void ChatController::sendMessage(QString text) {
     if (m_targetId == -1) return;
     QString t = QDateTime::currentDateTime().toString("hh:mm:ss");
-    QByteArray enc = m_crypto.encryptData(text.toUtf8(), KEY);
-    // Текстовое сообщение: isFile=false, нет имени/размера файла
+
+    // ИСПОЛЬЗУЕМ m_targetId КАК КЛЮЧ
+    QByteArray enc = m_crypto.encryptData(text.toUtf8(), m_sessionKeys.value(m_targetId, "12345678901234567890123456789012"));
+
     m_db.saveMsg(m_myId, m_targetId, enc, t, false, QString(), 0);
     m_sessionMsgs.insert(t + "|text|" + text);
     emit newMessageReceived(text, true, t, false, QString(), 0);
+
     auto packet = "MSG|" + QByteArray::number(m_targetId) + "|" + enc.toBase64() + "\n";
     m_network.postCommand(std::make_unique<SendMessageCommand>(&m_network, packet));
 }
@@ -115,10 +125,10 @@ void ChatController::sendFile(const QString &fileUrlStr) {
     int fileSize = fileData.size();
     QString t = QDateTime::currentDateTime().toString("hh:mm");
 
-    QByteArray encData = m_crypto.encryptData(fileData, KEY);
+    QByteArray encData = m_crypto.encryptData(fileData, m_sessionKeys.value(m_targetId, "12345678901234567890123456789012"));
 
     m_db.saveMsg(m_myId, m_targetId, encData, t, true, fileName, fileSize);
-     m_sessionMsgs.insert(t + fileName);
+    m_sessionMsgs.insert(t + "|file|" + fileName);
 
     emit newMessageReceived("Файл: " + fileName, true, t, true, fileName, fileSize);
 
@@ -152,7 +162,7 @@ void ChatController::downloadFile(int peerId, QString timestamp, QString fileNam
         return;
     }
 
-    QByteArray fileData = m_crypto.decryptData(encData, KEY);
+    QByteArray fileData = m_crypto.decryptData(encData, m_sessionKeys.value(peerId, "12345678901234567890123456789012"));
 
     QString savePath = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)
                        + "/" + fileName;
@@ -176,6 +186,29 @@ void ChatController::downloadFile(int peerId, QString timestamp, QString fileNam
     }
 }
 
+QString ChatController::getSecurityFingerprint(int peerId) {
+    QByteArray secretKey = m_sessionKeys.value(peerId, "12345678901234567890123456789012");
+
+    QByteArray hash = QCryptographicHash::hash(secretKey, QCryptographicHash::Sha256);
+
+    QStringList emojiMap = {
+        "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼",
+        "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐙",
+        "🦋", "🍎", "🍓", "🍉", "🍕", "🍩", "⚽", "🚗",
+        "✈️", "💎", "💡", "🔥", "⭐", "🎈", "🎵", "❤️"
+    };
+
+    QString fingerprint = "";
+
+    for (int i = 0; i < 4; ++i) {
+        unsigned char byteVal = static_cast<unsigned char>(hash[i]);
+        int index = byteVal % emojiMap.size();
+        fingerprint += emojiMap[index] + " ";
+    }
+
+    return fingerprint.trimmed();
+}
+
 void ChatController::onMessageReceived(const QByteArray &data) {
     auto msg = MessageFactory::create(data);
     if (!msg) return;
@@ -185,7 +218,7 @@ void ChatController::onMessageReceived(const QByteArray &data) {
         auto* authMsg = static_cast<AuthMessage*>(msg.get());
         if (authMsg->isSuccess) {
             m_myId   = authMsg->userId;
-            m_myName = authMsg->userName;   // сохраняем для подписи в пакетах FILE
+            m_myName = authMsg->userName;
             emit authSuccess(authMsg->userName);
         } else {
             emit authFailed();
@@ -202,7 +235,7 @@ void ChatController::onMessageReceived(const QByteArray &data) {
                 if (last.isFile) {
                     lastText = "📎 " + last.fileName;
                 } else {
-                    lastText = QString::fromUtf8(m_crypto.decryptData(last.encryptedData, KEY));
+                    lastText = QString::fromUtf8(m_crypto.decryptData(last.encryptedData, m_sessionKeys.value(srchMsg->userId, "12345678901234567890123456789012")));
                 }
                 if (last.senderId == m_myId) lastText = "Вы: " + lastText;
             }
@@ -218,13 +251,13 @@ void ChatController::onMessageReceived(const QByteArray &data) {
     }
     case MessageType::Text: {
         auto* txtMsg = static_cast<TextMessage*>(msg.get());
-        QString dec = QString::fromUtf8(m_crypto.decryptData(txtMsg->encryptedData, KEY));
+
+        QString dec = QString::fromUtf8(m_crypto.decryptData(txtMsg->encryptedData, m_sessionKeys.value(txtMsg->senderId, "12345678901234567890123456789012")));
 
         if (txtMsg->senderId != m_myId) {
             if (!m_db.isMessageExists(txtMsg->senderId, m_myId, txtMsg->timestamp, txtMsg->encryptedData)) {
                 m_db.saveContact(txtMsg->senderId, txtMsg->senderName);
-                m_db.saveMsg(txtMsg->senderId, m_myId, txtMsg->encryptedData, txtMsg->timestamp,
-                             false, QString(), 0);
+                m_db.saveMsg(txtMsg->senderId, m_myId, txtMsg->encryptedData, txtMsg->timestamp, false, QString(), 0);
             }
             m_userStatuses[txtMsg->senderId] = "В сети";
             emit userStatusChanged(txtMsg->senderId, "В сети");
@@ -247,7 +280,6 @@ void ChatController::onMessageReceived(const QByteArray &data) {
         int fSize = fileMsg->fileContent->getFileSize();
 
         if (fileMsg->senderId != m_myId) {
-            // 1. Сохраняем в базу данных, если такого сообщения еще нет
             if (!m_db.isMessageExists(fileMsg->senderId, m_myId, fileMsg->timestamp, fileMsg->encryptedData)) {
                 m_db.saveContact(fileMsg->senderId, fileMsg->senderName);
                 m_db.saveMsg(fileMsg->senderId, m_myId, fileMsg->encryptedData, fileMsg->timestamp, true, fName, fSize);
@@ -256,24 +288,53 @@ void ChatController::onMessageReceived(const QByteArray &data) {
             m_userStatuses[fileMsg->senderId] = "В сети";
             emit userStatusChanged(fileMsg->senderId, "В сети");
 
-            // 2. РЕАЛЬНОЕ ОТОБРАЖЕНИЕ (проверка на дубликаты в текущей сессии)
-            // Ключ должен совпадать с тем, что мы используем в loadHistory
-            QString sessionKey = fileMsg->timestamp + fName;
+            QString sessionKey = fileMsg->timestamp + "|file|" + fName; // Синхронизировано с loadHistory
 
             if (fileMsg->senderId == m_targetId) {
                 if (!m_sessionMsgs.contains(sessionKey)) {
-                    m_sessionMsgs.insert(sessionKey); // Помечаем, что сообщение уже в памяти
+                    m_sessionMsgs.insert(sessionKey);
                     emit newMessageReceived("Файл: " + fName, false, fileMsg->timestamp, true, fName, fSize);
                 }
             } else {
-                // Если чат не открыт, просто обновляем превью в списке контактов слева
                 emit userFound(fileMsg->senderName, fileMsg->senderId, "📎 " + fName);
+            }
+        }
+        break;
+    }
+    case MessageType::KeyExchange: {
+        auto* dhMsg = static_cast<KeyExchangeMessage*>(msg.get());
+
+        if (!dhMsg->isAck) {
+            m_dhSessions[dhMsg->senderId] = std::make_shared<DHManager>();
+
+            m_sessionKeys[dhMsg->senderId] = m_dhSessions[dhMsg->senderId]->generateSharedSecret(dhMsg->publicKey);
+
+            QByteArray myPubKey = m_dhSessions[dhMsg->senderId]->getPublicKey();
+            auto packet = "DH_ACK|" + QByteArray::number(dhMsg->senderId) + "|" + myPubKey.toBase64() + "\n";
+            m_network.postCommand(std::make_unique<SendMessageCommand>(&m_network, packet));
+            m_dhSessions.remove(dhMsg->senderId);
+        }
+        else {
+            if (m_dhSessions.contains(dhMsg->senderId)) {
+                m_sessionKeys[dhMsg->senderId] = m_dhSessions[dhMsg->senderId]->generateSharedSecret(dhMsg->publicKey);
+                m_dhSessions.remove(dhMsg->senderId);
+
+                if (m_targetId == dhMsg->senderId) {
+                    loadHistory();
+                }
             }
         }
         break;
     }
     default:
         break;
+    }
+}
+
+void ChatController::sendTypingStatus() {
+    if (m_targetId != -1) {
+        auto packet = "TYPING|" + QByteArray::number(m_targetId) + "\n";
+        m_network.postCommand(std::make_unique<SendMessageCommand>(&m_network, packet));
     }
 }
 

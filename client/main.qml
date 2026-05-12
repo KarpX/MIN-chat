@@ -175,6 +175,44 @@ ApplicationWindow {
                 }
             }
 
+            Dialog {
+                id: fingerprintDialog
+                anchors.centerIn: parent
+                width: 320
+                modal: true
+                title: "Отпечаток безопасности"
+                background: Rectangle { color: "#1e1e1e"; radius: 12; border.color: "#333" }
+
+                property string emojis: ""
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 16
+
+                    Label {
+                        text: "Сравните эти эмодзи с экраном вашего собеседника. Если они совпадают, чат надежно зашифрован (E2EE)."
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                        color: "#ccc"
+                        font.pixelSize: 13
+                    }
+
+                    Text {
+                        text: fingerprintDialog.emojis
+                        font.pixelSize: 42
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+
+                    Button {
+                        text: "ПОНЯТНО"
+                        Layout.alignment: Qt.AlignHCenter
+                        Material.background: "#1565C0"
+                        Material.foreground: "white"
+                        onClicked: fingerprintDialog.close()
+                    }
+                }
+            }
+
             RowLayout {
                 anchors.fill: parent; spacing: 0
 
@@ -268,7 +306,41 @@ ApplicationWindow {
                                     Rectangle { anchors.fill: parent; radius: 20; color: Qt.hsla((chatPage_root.currentChatId * 37) % 360 / 360, 0.5, 0.35, 1)
                                         Text { anchors.centerIn: parent; text: curName.text.charAt(0).toUpperCase(); font.pixelSize: 15; font.bold: true; color: "white" } } }
                                 ColumnLayout { spacing: 2
-                                    Label { id: curName; text: "Выберите чат"; font.pixelSize: 16; font.bold: true; color: "white" }
+                                    RowLayout {
+                                        spacing: 8
+                                        Label { id: curName; text: "Выберите чат"; font.pixelSize: 16; font.bold: true; color: "white" }
+
+                                        // НОВАЯ КНОПКА-ЗАМОК
+                                        Rectangle {
+                                            visible: chatArea.isSel
+                                            Layout.preferredWidth: 28
+                                            Layout.preferredHeight: 28
+                                            Layout.alignment: Qt.AlignVCenter
+
+                                            color: "transparent"
+                                            radius: 14
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "🔒"
+                                                font.pixelSize: 16
+                                            }
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                hoverEnabled: true // Включаем реакцию на наведение мыши
+
+                                                onEntered: parent.color = "#333333" // Серый кружок при наведении
+                                                onExited: parent.color = "transparent" // Убираем кружок
+
+                                                onClicked: {
+                                                    fingerprintDialog.emojis = chatController.getSecurityFingerprint(chatPage_root.currentChatId)
+                                                    fingerprintDialog.open()
+                                                }
+                                            }
+                                        }
+                                    }
                                     RowLayout { spacing: 6; visible: chatArea.isSel
                                         Rectangle { width: 7; height: 7; radius: 3.5; color: window.statusColor(chatPage_root.activeChatStatus); Behavior on color { ColorAnimation { duration: 250 } } }
                                         Label { text: chatPage_root.activeChatStatus; font.pixelSize: 12; color: window.statusColor(chatPage_root.activeChatStatus); Behavior on color { ColorAnimation { duration: 250 } } }

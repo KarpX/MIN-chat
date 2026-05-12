@@ -12,6 +12,7 @@ enum class MessageType {
     Status,
     Text,
     File,
+    KeyExchange,
     Unknown
 };
 
@@ -80,5 +81,16 @@ struct FileMessage : public IMessage {
         fileContent(std::move(content)) {}
 
     MessageType type() const override { return MessageType::File; }
+};
+
+struct KeyExchangeMessage : public IMessage {
+    int senderId;
+    bool isAck; // false = запрос (REQ), true = ответ (ACK)
+    QByteArray publicKey;
+
+    KeyExchangeMessage(int id, bool ack, QByteArray key)
+        : senderId(id), isAck(ack), publicKey(key) {}
+
+    MessageType type() const override { return MessageType::KeyExchange; }
 };
 #endif // IMESSAGE_H
