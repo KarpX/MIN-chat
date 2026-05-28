@@ -17,6 +17,7 @@ qt_add_executable(ChatClient ${CLIENT_SOURCES})
 
 qt_add_qml_module(ChatClient
     URI ChatClient
+    VERSION 1.0
     RESOURCE_PREFIX "/"
     QML_FILES main.qml
     SOURCES
